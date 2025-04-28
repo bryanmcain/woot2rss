@@ -14,18 +14,32 @@ class WootApi {
         'Accept': 'application/json',
       },
     });
+    
+    // Define available categories
+    this.categories = [
+      'Clearance',
+      'Computers',
+      'Electronics',
+      'Featured',
+      'Home',
+      'Gourmet',
+      'Shirts',
+      'Sports',
+      'Tools',
+      'Wootoff'
+    ];
   }
 
-  async getListings() {
-    console.log('Attempting to fetch listings from Woot API...');
+  async getListings(category = 'All') {
+    console.log(`Attempting to fetch listings from Woot API for category: ${category}...`);
     try {
-      // Use the feed/All endpoint per the working curl command
-      console.log(`Making request to: ${this.client.defaults.baseURL}/feed/All`);
-      const response = await this.client.get('/feed/All');
-      console.log(`Successfully received listings data. Items: ${JSON.stringify(response.data).substring(0, 100)}...`);
+      // Use the feed/{category} endpoint per the working curl command
+      console.log(`Making request to: ${this.client.defaults.baseURL}/feed/${category}`);
+      const response = await this.client.get(`/feed/${category}`);
+      console.log(`Successfully received listings data for ${category}. Items: ${JSON.stringify(response.data).substring(0, 100)}...`);
       return response.data;
     } catch (error) {
-      console.error('Error fetching listings from Woot API:', error.message);
+      console.error(`Error fetching listings from Woot API for category ${category}:`, error.message);
       console.error(`Full error object: ${JSON.stringify(error)}`);
       if (error.response) {
         console.error('API Response:', error.response.data);
@@ -41,26 +55,72 @@ class WootApi {
     }
   }
 
-  async getOffers() {
-    console.log('Fetching offers from Woot API...');
+  async getOffers(category = 'All') {
+    console.log(`Fetching offers from Woot API for category: ${category}...`);
     try {
       // Use the listings feed to get current offers
-      const data = await this.getListings();
+      const data = await this.getListings(category);
       const offers = data && data.Items ? data.Items : [];
-      console.log(`Retrieved ${offers.length} offers`);
+      console.log(`Retrieved ${offers.length} offers for category ${category}`);
       if (offers.length > 0) {
         console.log(`First offer: ${JSON.stringify(offers[0]).substring(0, 150)}...`);
       } else {
-        console.log('No offers found in the API response');
+        console.log(`No offers found in the API response for category ${category}`);
         console.log(`Raw response data: ${JSON.stringify(data).substring(0, 200)}...`);
       }
       return offers;
     } catch (error) {
-      console.error('Error fetching offers from Woot API:', error.message);
+      console.error(`Error fetching offers from Woot API for category ${category}:`, error.message);
       return [];
     }
   }
-
+  
+  async getAllCategoryOffers() {
+    console.log('Fetching offers for all categories...');
+    const categoryOffers = {};
+    
+    // Fetch offers for each category in parallel
+    await Promise.all(this.categories.map(async (category) => {
+      try {
+        const offers = await this.getOffers(category);
+        categoryOffers[category] = offers;
+        console.log(`Fetched ${offers.length} offers for category ${category}`);
+      } catch (error) {
+        console.error(`Error fetching offers for category ${category}:`, error.message);
+        categoryOffers[category] = [];
+      }
+    }));
+    
+    // Also fetch the "All" feed for backward compatibility
+    try {
+      const allOffers = await this.getOffers();
+      categoryOffers['All'] = allOffers;
+      console.log(`Fetched ${allOffers.length} offers for All categories`);
+    } catch (error) {
+      console.error('Error fetching offers for All categories:', error.message);
+      categoryOffers['All'] = [];
+    }
+    
+    return categoryOffers;
+  }
+  
+  async getSpecificCategoryOffers(category) {
+    console.log(`Fetching offers only for category ${category}...`);
+    
+    if (category === 'All' || this.categories.includes(category)) {
+      try {
+        const offers = await this.getOffers(category);
+        console.log(`Fetched ${offers.length} offers for category ${category}`);
+        return { [category]: offers };
+      } catch (error) {
+        console.error(`Error fetching offers for category ${category}:`, error.message);
+        return { [category]: [] };
+      }
+    } else {
+      console.error(`Invalid category: ${category}`);
+      return { [category]: [] };
+    }
+  }
 }
 
 module.exports = new WootApi();

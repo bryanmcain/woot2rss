@@ -22,6 +22,13 @@ class DbService {
   }
   
   init() {
+    // Drop existing tables to reset the database structure
+    this.db.exec(`
+      DROP TABLE IF EXISTS items;
+      DROP TABLE IF EXISTS feeds;
+    `);
+    
+    // Create tables
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS items (
         id TEXT PRIMARY KEY,
@@ -44,9 +51,11 @@ class DbService {
         last_updated TEXT NOT NULL
       );
     `);
+    
+    console.log("Database tables reset and initialized");
   }
   
-  saveItem(item, feedType) {
+  saveItem(item, feedType, category = null) {
     try {
       const stmt = this.db.prepare(`
         INSERT OR REPLACE INTO items (
@@ -57,6 +66,9 @@ class DbService {
       
       const now = new Date().toISOString();
       const publishedAt = item.published_at || item.startDate || item.createdAt || now;
+      
+      // Use category if provided, otherwise use feedType
+      const actualFeedType = category || feedType;
       
       // Log to debug
       console.log('Debug - Saving item: ', {
@@ -69,7 +81,7 @@ class DbService {
         price: item.price || '',
         originalPrice: item.originalPrice || '',
         discount: item.discount || '',
-        feedType: feedType
+        feedType: actualFeedType
       });
       
       stmt.run(
@@ -82,7 +94,7 @@ class DbService {
         item.price || '',
         item.originalPrice || '',
         item.discount || '',
-        feedType,
+        actualFeedType,
         now,
         publishedAt
       );
