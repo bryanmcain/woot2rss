@@ -16,16 +16,16 @@ class WootApi {
     });
   }
 
-  async getNamedFeed(feedName = 'daily') {
-    console.log(`Attempting to fetch '${feedName}' feed from Woot API...`);
+  async getListings() {
+    console.log('Attempting to fetch listings from Woot API...');
     try {
-      // Use the API endpoint format from documentation
-      console.log(`Making request to: ${this.client.defaults.baseURL}/api/v1/feeds/${feedName}`);
-      const response = await this.client.get(`/api/v1/feeds/${feedName}`);
-      console.log(`Successfully received '${feedName}' feed data. Items: ${JSON.stringify(response.data).substring(0, 100)}...`);
+      // Use the feed/All endpoint per the working curl command
+      console.log(`Making request to: ${this.client.defaults.baseURL}/feed/All`);
+      const response = await this.client.get('/feed/All');
+      console.log(`Successfully received listings data. Items: ${JSON.stringify(response.data).substring(0, 100)}...`);
       return response.data;
     } catch (error) {
-      console.error(`Error fetching '${feedName}' feed from Woot API:`, error.message);
+      console.error('Error fetching listings from Woot API:', error.message);
       console.error(`Full error object: ${JSON.stringify(error)}`);
       if (error.response) {
         console.error('API Response:', error.response.data);
@@ -44,9 +44,9 @@ class WootApi {
   async getOffers() {
     console.log('Fetching offers from Woot API...');
     try {
-      // Use the named feed endpoint to get current offers
-      const data = await this.getNamedFeed('daily');
-      const offers = data.offers || [];
+      // Use the listings feed to get current offers
+      const data = await this.getListings();
+      const offers = data && data.Items ? data.Items : [];
       console.log(`Retrieved ${offers.length} offers`);
       if (offers.length > 0) {
         console.log(`First offer: ${JSON.stringify(offers[0]).substring(0, 150)}...`);
@@ -61,25 +61,6 @@ class WootApi {
     }
   }
 
-  async getEvents() {
-    console.log('Fetching events from Woot API...');
-    try {
-      // Use the named feed endpoint to get current events
-      const data = await this.getNamedFeed('events');
-      const events = data.events || [];
-      console.log(`Retrieved ${events.length} events`);
-      if (events.length > 0) {
-        console.log(`First event: ${JSON.stringify(events[0]).substring(0, 150)}...`);
-      } else {
-        console.log('No events found in the API response');
-        console.log(`Raw response data: ${JSON.stringify(data).substring(0, 200)}...`);
-      }
-      return events;
-    } catch (error) {
-      console.error('Error fetching events from Woot API:', error.message);
-      return [];
-    }
-  }
 }
 
 module.exports = new WootApi();

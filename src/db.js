@@ -47,30 +47,55 @@ class DbService {
   }
   
   saveItem(item, feedType) {
-    const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO items (
-        id, title, url, description, content, image_url, 
-        price, original_price, discount, feed_type, created_at, published_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    
-    const now = new Date().toISOString();
-    const publishedAt = item.startDate || item.createdAt || now;
-    
-    stmt.run(
-      item.id || item.url,
-      item.title,
-      item.url,
-      item.description || '',
-      item.content || '',
-      item.imageUrl || '',
-      item.price || '',
-      item.originalPrice || '',
-      item.discount || '',
-      feedType,
-      now,
-      publishedAt
-    );
+    try {
+      const stmt = this.db.prepare(`
+        INSERT OR REPLACE INTO items (
+          id, title, url, description, content, image_url, 
+          price, original_price, discount, feed_type, created_at, published_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      
+      const now = new Date().toISOString();
+      const publishedAt = item.published_at || item.startDate || item.createdAt || now;
+      
+      // Log to debug
+      console.log('Debug - Saving item: ', {
+        id: item.id || item.url || `woot-${Date.now()}`,
+        title: item.title || 'Untitled',
+        url: item.url || 'https://www.woot.com',
+        description: item.description || '',
+        contentLength: item.content ? item.content.length : 0,
+        imageUrl: item.imageUrl || '',
+        price: item.price || '',
+        originalPrice: item.originalPrice || '',
+        discount: item.discount || '',
+        feedType: feedType
+      });
+      
+      stmt.run(
+        item.id || item.url || `woot-${Date.now()}`,
+        item.title || 'Untitled',
+        item.url || 'https://www.woot.com',
+        item.description || '',
+        item.content || '',
+        item.imageUrl || '',
+        item.price || '',
+        item.originalPrice || '',
+        item.discount || '',
+        feedType,
+        now,
+        publishedAt
+      );
+    } catch (error) {
+      console.error('Error saving item to database:', error);
+      console.error('Item data:', JSON.stringify({
+        id: item.id,
+        title: item.title,
+        url: item.url,
+        published_at: item.published_at
+      }));
+      throw error;
+    }
   }
   
   updateFeedTimestamp(feedType) {

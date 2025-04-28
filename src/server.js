@@ -23,8 +23,8 @@ cron.schedule(config.checkNewItemsInterval, async () => {
     console.log('Checking for new items...');
     const result = await rssGenerator.updateFeeds();
     
-    if (result.offersCount > 0 || result.eventsCount > 0) {
-      console.log(`Found new items: ${result.offersCount} offers, ${result.eventsCount} events`);
+    if (result.offersCount > 0) {
+      console.log(`Found new items: ${result.offersCount} offers`);
     } else {
       console.log('No new items found');
     }

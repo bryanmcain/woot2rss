@@ -29,59 +29,76 @@ class RssGenerator {
       
       // Fetch data from Woot API
       const offers = await wootApi.getOffers();
+      console.log(`Processing ${offers.length} offers from the API...`);
+      
+      let savedCount = 0;
       
       // Store offers in database
       for (const offer of offers) {
-        const offerWithContent = {
-          ...offer,
-          content: this.generateItemContent(offer)
-        };
-        db.saveItem(offerWithContent, 'offers');
+        try {
+          // Map the API response fields to our expected format
+          // Handle prices that can be objects with Minimum/Maximum values
+          const formatPrice = (price) => {
+            if (!price) return 'N/A';
+            if (typeof price === 'object' && price.Minimum !== undefined) {
+              return price.Minimum === price.Maximum ? 
+                `$${price.Minimum}` : 
+                `$${price.Minimum} - $${price.Maximum}`;
+            }
+            return `$${price}`;
+          };
+
+          const mappedOffer = {
+            id: offer.OfferId || `woot-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+            title: offer.Title || 'Untitled Offer',
+            description: offer.Subtitle || '',
+            url: offer.Url || 'https://www.woot.com',
+            published_at: offer.StartDate || new Date().toISOString(),
+            price: formatPrice(offer.SalePrice),
+            originalPrice: formatPrice(offer.ListPrice),
+            discount: null, // Calculate discount later if needed
+            imageUrl: offer.Photo || null,
+            categories: Array.isArray(offer.Categories) ? offer.Categories : [],
+            site: offer.Site || 'Woot',
+            isSoldOut: offer.IsSoldOut || false,
+            endDate: offer.EndDate || null
+          };
+          
+          // Add HTML content
+          const offerWithContent = {
+            ...mappedOffer,
+            content: this.generateItemContent(mappedOffer)
+          };
+          
+          db.saveItem(offerWithContent, 'offers');
+          savedCount++;
+          
+          // Log progress every 100 items
+          if (savedCount % 100 === 0) {
+            console.log(`Saved ${savedCount}/${offers.length} offers to database`);
+          }
+        } catch (error) {
+          console.error(`Error processing offer:`, error);
+          // Continue with the next offer
+        }
       }
       
       // Update feed timestamp
       db.updateFeedTimestamp('offers');
       
-      console.log(`Stored ${offers.length} offers in database`);
-      return offers.length;
+      console.log(`Successfully stored ${savedCount}/${offers.length} offers in database`);
+      return savedCount;
     } catch (error) {
       console.error('Error fetching and storing offers:', error);
       return 0;
     }
   }
   
-  async fetchAndStoreEvents() {
-    try {
-      console.log('Fetching events from Woot API...');
-      
-      // Fetch data from Woot API
-      const events = await wootApi.getEvents();
-      
-      // Store events in database
-      for (const event of events) {
-        const eventWithContent = {
-          ...event,
-          content: this.generateItemContent(event)
-        };
-        db.saveItem(eventWithContent, 'events');
-      }
-      
-      // Update feed timestamp
-      db.updateFeedTimestamp('events');
-      
-      console.log(`Stored ${events.length} events in database`);
-      return events.length;
-    } catch (error) {
-      console.error('Error fetching and storing events:', error);
-      return 0;
-    }
-  }
 
   async updateFeeds() {
     try {
       console.log('Updating feeds from API...');
       const offersCount = await this.fetchAndStoreOffers();
-      const eventsCount = await this.fetchAndStoreEvents();
       
       // Clean up old items if needed
       db.cleanupOldItems();
@@ -90,9 +107,9 @@ class RssGenerator {
       this.cached = null;
       this.lastUpdated = new Date();
       
-      console.log(`Updated feeds at ${this.lastUpdated.toISOString()} - Added ${offersCount} offers and ${eventsCount} events`);
+      console.log(`Updated feeds at ${this.lastUpdated.toISOString()} - Added ${offersCount} offers`);
       
-      return { offersCount, eventsCount };
+      return { offersCount };
     } catch (error) {
       console.error('Error updating feeds:', error);
       throw error;
@@ -108,6 +125,10 @@ class RssGenerator {
         <p>Price: ${item.price || 'N/A'}</p>
         ${item.originalPrice ? `<p>Original Price: ${item.originalPrice}</p>` : ''}
         ${item.discount ? `<p>Discount: ${item.discount}</p>` : ''}
+        ${item.site ? `<p>Site: ${item.site}</p>` : ''}
+        ${item.categories && item.categories.length > 0 ? `<p>Categories: ${item.categories.join(', ')}</p>` : ''}
+        ${item.isSoldOut ? '<p><strong>Sold Out</strong></p>' : ''}
+        ${item.endDate ? `<p>Ends: ${new Date(item.endDate).toLocaleString()}</p>` : ''}
         <a href="${item.url}">View on Woot</a>
       </div>
     `;
@@ -165,17 +186,12 @@ class RssGenerator {
   }
 
   getLastUpdated() {
-    // Get the most recent feed update timestamp from the database
+    // Get the feed update timestamp from the database
     const offersLastUpdated = db.getFeedLastUpdated('offers');
-    const eventsLastUpdated = db.getFeedLastUpdated('events');
     
-    if (!offersLastUpdated && !eventsLastUpdated) return this.lastUpdated;
+    if (!offersLastUpdated) return this.lastUpdated;
     
-    if (offersLastUpdated && eventsLastUpdated) {
-      return new Date(Math.max(new Date(offersLastUpdated), new Date(eventsLastUpdated)));
-    }
-    
-    return new Date(offersLastUpdated || eventsLastUpdated);
+    return new Date(offersLastUpdated);
   }
   
   getItemCount() {
