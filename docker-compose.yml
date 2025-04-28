@@ -1,0 +1,16 @@
+version: '3'
+
+services:
+  woot2rss:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - WOOT_API_KEY=${WOOT_API_KEY}
+      - WOOT_API_BASE_URL=${WOOT_API_BASE_URL:-https://api.woot.com}
+      - PORT=3000
+      - UPDATE_INTERVAL=${UPDATE_INTERVAL:-*/30 * * * *}
+    restart: unless-stopped
