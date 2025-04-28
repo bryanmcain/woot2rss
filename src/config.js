@@ -4,7 +4,7 @@ const path = require('path');
 module.exports = {
   port: process.env.PORT || 3000,
   wootApi: {
-    baseUrl: process.env.WOOT_API_BASE_URL || 'https://api.woot.com',
+    baseUrl: process.env.WOOT_API_BASE_URL || 'https://developer.woot.com',
     apiKey: process.env.WOOT_API_KEY,
   },
   db: {
