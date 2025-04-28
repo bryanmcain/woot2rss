@@ -13,4 +13,13 @@ services:
       - WOOT_API_BASE_URL=${WOOT_API_BASE_URL:-https://api.woot.com}
       - PORT=3000
       - UPDATE_INTERVAL=${UPDATE_INTERVAL:-*/30 * * * *}
+      - CHECK_NEW_ITEMS_INTERVAL=${CHECK_NEW_ITEMS_INTERVAL:-*/10 * * * *}
+      - DB_PATH=/app/data/woot.db
+      - MAX_ITEMS=${MAX_ITEMS:-1000}
+    volumes:
+      - woot-data:/app/data
     restart: unless-stopped
+
+volumes:
+  woot-data:
+    driver: local

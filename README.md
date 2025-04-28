@@ -5,7 +5,9 @@ A Docker service that converts Woot API data to RSS, Atom, and JSON feeds.
 ## Features
 
 - Automatically fetches product data from the Woot API
-- Generates RSS, Atom, and JSON feeds
+- Stores feed items in a SQLite database for persistence
+- Regularly checks for new items from the API
+- Generates RSS, Atom, and JSON feeds from the database
 - Updates feeds on a configurable schedule
 - Simple web interface to access feeds
 - Dockerized for easy deployment
@@ -25,16 +27,23 @@ A Docker service that converts Woot API data to RSS, Atom, and JSON feeds.
 cp .env.example .env
 ```
 
-2. Edit the `.env` file with your Woot API credentials:
+2. Edit the `.env` file with your Woot API credentials and configuration:
 
 ```
 WOOT_API_KEY=your_api_key_here
 WOOT_API_BASE_URL=https://api.woot.com
 PORT=3000
 UPDATE_INTERVAL=*/30 * * * *
+CHECK_NEW_ITEMS_INTERVAL=*/10 * * * *
+DB_PATH=/path/to/your/database.db
+MAX_ITEMS=1000
 ```
 
-The `UPDATE_INTERVAL` uses cron syntax to define how frequently the feeds should update (default is every 30 minutes).
+Configuration options:
+- `UPDATE_INTERVAL`: Cron syntax to define how frequently full feed updates and maintenance should run (default is every 30 minutes)
+- `CHECK_NEW_ITEMS_INTERVAL`: Cron syntax to define how frequently to check for new items (default is every 10 minutes)
+- `DB_PATH`: Custom path to store the SQLite database (defaults to `./data/woot.db`)
+- `MAX_ITEMS`: Maximum number of items to store in the database (defaults to 1000)
 
 ## Usage
 
@@ -50,6 +59,8 @@ docker-compose up -d
 - RSS feed: http://localhost:3000/rss
 - Atom feed: http://localhost:3000/atom
 - JSON feed: http://localhost:3000/json
+- Health check: http://localhost:3000/health
+- Manual refresh: http://localhost:3000/refresh
 
 ### Viewing Logs
 

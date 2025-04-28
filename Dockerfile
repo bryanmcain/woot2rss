@@ -8,6 +8,9 @@ COPY package*.json ./
 # Install dependencies
 RUN npm ci --only=production
 
+# Create data directory for the database
+RUN mkdir -p /app/data && chmod 777 /app/data
+
 # Copy app source
 COPY . .
 
