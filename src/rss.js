@@ -84,8 +84,14 @@ class RssGenerator {
               content: this.generateItemContent(mappedOffer)
             };
             
-            // Save item with the specific category as feed type
-            db.saveItem(offerWithContent, 'offers', category);
+            // Add category check to ensure items are only saved to their correct category
+            const apiCategories = Array.isArray(offer.Categories) ? offer.Categories : [];
+            
+            // If this offer belongs to the current category, save it
+            if (apiCategories.includes(category) || category === 'Featured' || category === 'Clearance' || category === 'Wootoff') {
+              // Save item with the specific category as feed type
+              db.saveItem(offerWithContent, 'offers', category);
+            }
             savedCount++;
             
             // Log progress every 100 items
@@ -192,8 +198,14 @@ class RssGenerator {
               content: this.generateItemContent(mappedOffer)
             };
             
-            // Save item with the specific category as feed type
-            db.saveItem(offerWithContent, 'offers', validCategory);
+            // Add category check to ensure items are only saved to their correct category
+            const apiCategories = Array.isArray(offer.Categories) ? offer.Categories : [];
+            
+            // If this offer belongs to the current category, save it
+            if (apiCategories.includes(validCategory) || validCategory === 'Featured' || validCategory === 'Clearance' || validCategory === 'Wootoff') {
+              // Save item with the specific category as feed type
+              db.saveItem(offerWithContent, 'offers', validCategory);
+            }
             savedCount++;
           } catch (error) {
             console.error(`Error processing offer for category ${validCategory}:`, error);

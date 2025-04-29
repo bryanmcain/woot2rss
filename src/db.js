@@ -22,13 +22,7 @@ class DbService {
   }
   
   init() {
-    // Drop existing tables to reset the database structure
-    this.db.exec(`
-      DROP TABLE IF EXISTS items;
-      DROP TABLE IF EXISTS feeds;
-    `);
-    
-    // Create tables
+    // Create tables if they don't exist (don't drop existing tables)
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS items (
         id TEXT,
@@ -53,7 +47,7 @@ class DbService {
       );
     `);
     
-    console.log("Database tables reset and initialized");
+    console.log("Database tables initialized");
   }
   
   saveItem(item, feedType, category = null) {
@@ -164,25 +158,30 @@ class DbService {
     try {
       const maxItems = config.db.maxItems;
       
-      // Get current item count
-      const totalItems = this.getItemCount();
-      
-      // If we have more than the max, delete the oldest ones
-      if (totalItems > maxItems) {
-        const itemsToDelete = totalItems - maxItems;
-        console.log(`Cleaning up database - removing ${itemsToDelete} oldest items`);
+      // Clean up each category separately to ensure balanced feeds
+      for (const category of ['Clearance', 'Computers', 'Electronics', 'Featured', 'Home', 'Gourmet', 'Shirts', 'Sports', 'Tools', 'Wootoff']) {
+        // Get current item count for this category
+        const categoryItems = this.getItemCount(category);
+        const maxCategoryItems = Math.floor(maxItems / 10); // Divide evenly among categories
         
-        const stmt = this.db.prepare(`
-          DELETE FROM items 
-          WHERE id IN (
-            SELECT id FROM items 
-            ORDER BY published_at ASC 
-            LIMIT ?
-          )
-        `);
-        
-        const result = stmt.run(itemsToDelete);
-        console.log(`Removed ${result.changes} old items from database`);
+        // If we have more than the max for this category, delete the oldest ones
+        if (categoryItems > maxCategoryItems) {
+          const itemsToDelete = categoryItems - maxCategoryItems;
+          console.log(`Cleaning up database - removing ${itemsToDelete} oldest items from ${category}`);
+          
+          const stmt = this.db.prepare(`
+            DELETE FROM items 
+            WHERE rowid IN (
+              SELECT rowid FROM items 
+              WHERE feed_type = ?
+              ORDER BY published_at ASC 
+              LIMIT ?
+            )
+          `);
+          
+          const result = stmt.run(category, itemsToDelete);
+          console.log(`Removed ${result.changes} old items from ${category}`);
+        }
       }
     } catch (error) {
       console.error('Error cleaning up old items:', error);
