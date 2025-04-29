@@ -18,28 +18,23 @@ class DbService {
     this.db = new Database(dbPath);
     console.log(`Database initialized at: ${dbPath}`);
     
+    // Define the categories
+    this.categories = [
+      'Clearance', 'Computers', 'Electronics', 'Featured', 
+      'Home', 'Gourmet', 'Shirts', 'Sports', 'Tools', 'Wootoff'
+    ];
+    
     this.init();
   }
   
+  _getCategoryTableName(category) {
+    // Standardize table name format
+    return `items_${category.toLowerCase()}`;
+  }
+  
   init() {
-    // Create tables if they don't exist (don't drop existing tables)
+    // Create feeds table (for tracking last updated timestamps)
     this.db.exec(`
-      CREATE TABLE IF NOT EXISTS items (
-        id TEXT,
-        title TEXT NOT NULL,
-        url TEXT NOT NULL,
-        description TEXT,
-        content TEXT,
-        image_url TEXT,
-        price TEXT,
-        original_price TEXT,
-        discount TEXT,
-        feed_type TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        published_at TEXT NOT NULL,
-        PRIMARY KEY (id, feed_type)
-      );
-      
       CREATE TABLE IF NOT EXISTS feeds (
         id TEXT PRIMARY KEY,
         feed_type TEXT NOT NULL,
@@ -47,26 +42,138 @@ class DbService {
       );
     `);
     
+    // Check if we have a legacy items table
+    const hasLegacyTable = this.db.prepare(`
+      SELECT name FROM sqlite_master 
+      WHERE type='table' AND name='items'
+    `).get();
+    
+    // Create separate tables for each category
+    for (const category of this.categories) {
+      const tableName = this._getCategoryTableName(category);
+      
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS ${tableName} (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          url TEXT NOT NULL,
+          description TEXT,
+          content TEXT,
+          image_url TEXT,
+          price TEXT,
+          original_price TEXT,
+          discount TEXT,
+          created_at TEXT NOT NULL,
+          published_at TEXT NOT NULL
+        );
+      `);
+    }
+    
     console.log("Database tables initialized");
+    
+    // If legacy table exists, we'll migrate data during app startup
+    if (hasLegacyTable) {
+      console.log("Legacy 'items' table found - will migrate data to category-specific tables");
+    }
+  }
+  
+  // Migrate data from legacy table to new structure
+  migrateFromLegacyTable() {
+    try {
+      console.log("Starting data migration from legacy 'items' table...");
+      
+      // Check if legacy table exists
+      const hasLegacyTable = this.db.prepare(`
+        SELECT name FROM sqlite_master 
+        WHERE type='table' AND name='items'
+      `).get();
+      
+      if (!hasLegacyTable) {
+        console.log("No legacy table found - migration not needed");
+        return false;
+      }
+      
+      // Get all items from legacy table
+      const allItems = this.db.prepare(`
+        SELECT * FROM items
+      `).all();
+      
+      console.log(`Found ${allItems.length} items to migrate`);
+      
+      // Begin transaction for faster inserts
+      const transaction = this.db.transaction(() => {
+        for (const item of allItems) {
+          const category = item.feed_type;
+          if (!this.categories.includes(category)) {
+            console.log(`Skipping item with unknown category: ${category}`);
+            continue;
+          }
+          
+          const tableName = this._getCategoryTableName(category);
+          
+          // Insert into new table
+          this.db.prepare(`
+            INSERT OR REPLACE INTO ${tableName} (
+              id, title, url, description, content, image_url, 
+              price, original_price, discount, created_at, published_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            item.id,
+            item.title,
+            item.url,
+            item.description,
+            item.content,
+            item.image_url,
+            item.price,
+            item.original_price,
+            item.discount,
+            item.created_at,
+            item.published_at
+          );
+        }
+      });
+      
+      // Execute the transaction
+      transaction();
+      
+      console.log(`Migrated ${allItems.length} items to category-specific tables`);
+      
+      // Optionally drop the legacy table once migration is complete
+      // Uncomment this once you've verified migration works correctly
+      // this.db.exec(`DROP TABLE IF EXISTS items`);
+      
+      return true;
+    } catch (error) {
+      console.error('Error migrating legacy data:', error);
+      return false;
+    }
   }
   
   saveItem(item, feedType, category = null) {
     try {
+      // Use category if provided, otherwise use feedType
+      const actualCategory = category || feedType;
+      
+      // Skip if category is not recognized
+      if (!this.categories.includes(actualCategory)) {
+        console.error(`Cannot save item - unknown category: ${actualCategory}`);
+        return;
+      }
+      
+      const tableName = this._getCategoryTableName(actualCategory);
+      
       const stmt = this.db.prepare(`
-        INSERT OR REPLACE INTO items (
+        INSERT OR REPLACE INTO ${tableName} (
           id, title, url, description, content, image_url, 
-          price, original_price, discount, feed_type, created_at, published_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          price, original_price, discount, created_at, published_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       
       const now = new Date().toISOString();
       const publishedAt = item.published_at || item.startDate || item.createdAt || now;
       
-      // Use category if provided, otherwise use feedType
-      const actualFeedType = category || feedType;
-      
       // Log to debug
-      console.log('Debug - Saving item: ', {
+      console.log('Debug - Saving item to table', tableName, {
         id: item.id || item.url || `woot-${Date.now()}`,
         title: item.title || 'Untitled',
         url: item.url || 'https://www.woot.com',
@@ -75,8 +182,7 @@ class DbService {
         imageUrl: item.imageUrl || '',
         price: item.price || '',
         originalPrice: item.originalPrice || '',
-        discount: item.discount || '',
-        feedType: actualFeedType
+        discount: item.discount || ''
       });
       
       stmt.run(
@@ -89,7 +195,6 @@ class DbService {
         item.price || '',
         item.originalPrice || '',
         item.discount || '',
-        actualFeedType,
         now,
         publishedAt
       );
@@ -125,44 +230,99 @@ class DbService {
   }
   
   getItems(feedType = null, limit = 50) {
-    let query = 'SELECT * FROM items';
-    const params = [];
-    
-    if (feedType) {
-      query += ' WHERE feed_type = ?';
-      params.push(feedType);
+    // If no feedType specified, return items from all categories
+    if (!feedType) {
+      // Get items from each category table, ordered by published_at
+      const allItems = [];
+      
+      for (const category of this.categories) {
+        const tableName = this._getCategoryTableName(category);
+        
+        try {
+          const stmt = this.db.prepare(`
+            SELECT *, '${category}' as feed_type FROM ${tableName}
+            ORDER BY published_at DESC
+            LIMIT ?
+          `);
+          
+          const items = stmt.all(Math.ceil(limit / this.categories.length));
+          allItems.push(...items);
+        } catch (error) {
+          console.error(`Error fetching items from ${tableName}:`, error);
+        }
+      }
+      
+      // Sort all items by published_at and limit to requested count
+      return allItems
+        .sort((a, b) => new Date(b.published_at) - new Date(a.published_at))
+        .slice(0, limit);
     }
     
-    query += ' ORDER BY published_at DESC LIMIT ?';
-    params.push(limit);
+    // Return items from specific category table
+    if (!this.categories.includes(feedType)) {
+      console.error(`Cannot get items - unknown category: ${feedType}`);
+      return [];
+    }
     
-    const stmt = this.db.prepare(query);
-    return stmt.all(...params);
+    const tableName = this._getCategoryTableName(feedType);
+    
+    try {
+      const stmt = this.db.prepare(`
+        SELECT *, '${feedType}' as feed_type FROM ${tableName}
+        ORDER BY published_at DESC
+        LIMIT ?
+      `);
+      
+      return stmt.all(limit);
+    } catch (error) {
+      console.error(`Error fetching items from ${tableName}:`, error);
+      return [];
+    }
+  }
+  
+  _getCountForCategory(category) {
+    const tableName = this._getCategoryTableName(category);
+    
+    try {
+      const stmt = this.db.prepare(`SELECT COUNT(*) as count FROM ${tableName}`);
+      const result = stmt.get();
+      return result ? result.count : 0;
+    } catch (error) {
+      console.error(`Error counting items in ${tableName}:`, error);
+      return 0;
+    }
   }
   
   getItemCount(feedType = null) {
-    let query = 'SELECT COUNT(*) as count FROM items';
-    const params = [];
-    
-    if (feedType) {
-      query += ' WHERE feed_type = ?';
-      params.push(feedType);
+    // If no feedType specified, return sum of items across all categories
+    if (!feedType) {
+      let totalCount = 0;
+      
+      for (const category of this.categories) {
+        totalCount += this._getCountForCategory(category);
+      }
+      
+      return totalCount;
     }
     
-    const stmt = this.db.prepare(query);
-    const result = stmt.get(...params);
-    return result ? result.count : 0;
+    // Return count for specific category table
+    if (!this.categories.includes(feedType)) {
+      console.error(`Cannot get item count - unknown category: ${feedType}`);
+      return 0;
+    }
+    
+    return this._getCountForCategory(feedType);
   }
   
   cleanupOldItems() {
     try {
       const maxItems = config.db.maxItems;
+      const maxCategoryItems = Math.floor(maxItems / this.categories.length); // Divide evenly among categories
       
-      // Clean up each category separately to ensure balanced feeds
-      for (const category of ['Clearance', 'Computers', 'Electronics', 'Featured', 'Home', 'Gourmet', 'Shirts', 'Sports', 'Tools', 'Wootoff']) {
-        // Get current item count for this category
-        const categoryItems = this.getItemCount(category);
-        const maxCategoryItems = Math.floor(maxItems / 10); // Divide evenly among categories
+      // Clean up each category separately
+      for (const category of this.categories) {
+        const tableName = this._getCategoryTableName(category);
+        const categoryItems = this._getCountForCategory(category);
         
         // If we have more than the max for this category, delete the oldest ones
         if (categoryItems > maxCategoryItems) {
@@ -170,16 +330,15 @@ class DbService {
           console.log(`Cleaning up database - removing ${itemsToDelete} oldest items from ${category}`);
           
           const stmt = this.db.prepare(`
-            DELETE FROM items 
+            DELETE FROM ${tableName} 
             WHERE rowid IN (
-              SELECT rowid FROM items 
-              WHERE feed_type = ?
+              SELECT rowid FROM ${tableName}
               ORDER BY published_at ASC 
               LIMIT ?
             )
           `);
           
-          const result = stmt.run(category, itemsToDelete);
+          const result = stmt.run(itemsToDelete);
           console.log(`Removed ${result.changes} old items from ${category}`);
         }
       }

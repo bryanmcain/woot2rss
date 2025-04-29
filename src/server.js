@@ -233,6 +233,10 @@ app.get('/health', (req, res) => {
 app.listen(config.port, () => {
   console.log(`Woot2RSS server running on port ${config.port}`);
   
+  // Run database migration if needed
+  console.log('Checking for legacy data to migrate...');
+  db.migrateFromLegacyTable();
+  
   // Initial feed update for all categories
   console.log('Starting initial feed update for all categories...');
   rssGenerator.updateFeeds().catch(error => {
