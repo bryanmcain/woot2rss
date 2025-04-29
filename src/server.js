@@ -36,7 +36,6 @@ cron.schedule(config.checkNewItemsInterval, async () => {
 // Routes
 app.get('/', (req, res) => {
   const categories = rssGenerator.getCategories();
-  const allLastUpdated = rssGenerator.getLastUpdated();
   const totalItemCount = rssGenerator.getItemCount();
   
   // Create section for each category's stats
@@ -54,6 +53,7 @@ app.get('/', (req, res) => {
           <a href="/rss/${category.toLowerCase()}" class="feed-link">RSS</a>
           <a href="/atom/${category.toLowerCase()}" class="feed-link">Atom</a>
           <a href="/json/${category.toLowerCase()}" class="feed-link">JSON</a>
+          <a href="/refresh/${category.toLowerCase()}" class="refresh-link">Refresh</a>
         </div>
       </div>
     `;
@@ -71,6 +71,8 @@ app.get('/', (req, res) => {
           .feeds { margin: 20px 0; }
           .feed-link { display: inline-block; margin: 0 10px 5px 0; padding: 3px 8px; background: #f8f8f8; border-radius: 3px; text-decoration: none; color: #e47911; }
           .feed-link:hover { background: #e47911; color: white; }
+          .refresh-link { display: inline-block; margin: 0 10px 5px 0; padding: 3px 8px; background: #f0f0f0; border-radius: 3px; text-decoration: none; color: #0066cc; }
+          .refresh-link:hover { background: #0066cc; color: white; }
           .stats { margin: 20px 0; font-size: 0.9em; color: #555; }
           .category-stats { margin: 15px 0; padding: 10px; border: 1px solid #eee; }
           .categories-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px; }
@@ -80,17 +82,10 @@ app.get('/', (req, res) => {
         <h1>Woot2RSS</h1>
         <p>Convert Woot deals to RSS feeds</p>
         
-        <div class="feeds">
-          <h2>All Feeds (Combined)</h2>
-          <a class="feed-link" href="/rss">RSS Feed</a>
-          <a class="feed-link" href="/atom">Atom Feed</a>
-          <a class="feed-link" href="/json">JSON Feed</a>
-        </div>
-        
         <div class="status">
-          <h2>Overall Status</h2>
-          <p>Last Updated: ${allLastUpdated ? allLastUpdated.toLocaleString() : 'Not yet updated'}</p>
+          <h2>Status</h2>
           <p>Total Items in Database: ${totalItemCount}</p>
+          <p><a href="/refresh" class="refresh-link">Refresh All Categories</a></p>
         </div>
         
         <h2>Category Feeds</h2>
@@ -107,38 +102,17 @@ app.get('/', (req, res) => {
   `);
 });
 
-// Handle common feed requests (all categories combined)
-app.get('/rss', async (req, res) => {
-  try {
-    const feed = await rssGenerator.getRssFeed();
-    res.type('application/rss+xml');
-    res.send(feed);
-  } catch (error) {
-    console.error('Error serving RSS feed:', error);
-    res.status(500).send('Error generating RSS feed');
-  }
+// Redirect root feed requests to a category selector page
+app.get('/rss', (req, res) => {
+  res.redirect('/');
 });
 
-app.get('/atom', async (req, res) => {
-  try {
-    const feed = await rssGenerator.getAtomFeed();
-    res.type('application/atom+xml');
-    res.send(feed);
-  } catch (error) {
-    console.error('Error serving Atom feed:', error);
-    res.status(500).send('Error generating Atom feed');
-  }
+app.get('/atom', (req, res) => {
+  res.redirect('/');
 });
 
-app.get('/json', async (req, res) => {
-  try {
-    const feed = await rssGenerator.getJsonFeed();
-    res.type('application/json');
-    res.send(feed);
-  } catch (error) {
-    console.error('Error serving JSON feed:', error);
-    res.status(500).send('Error generating JSON feed');
-  }
+app.get('/json', (req, res) => {
+  res.redirect('/');
 });
 
 // Handle category-specific feeds
@@ -243,11 +217,15 @@ app.get('/refresh/:category', async (req, res) => {
 // Health check endpoint
 app.get('/health', (req, res) => {
   const dbStatus = db ? 'connected' : 'disconnected';
+  const categories = rssGenerator.getCategories();
+  const firstCategory = categories.length > 0 ? categories[0] : null;
+  
   res.status(200).json({ 
     status: 'ok',
     database: dbStatus,
     items: rssGenerator.getItemCount(),
-    lastUpdated: rssGenerator.getLastUpdated()
+    lastUpdated: firstCategory ? rssGenerator.getLastUpdated(firstCategory) : null,
+    categories: categories
   });
 });
 
@@ -255,7 +233,8 @@ app.get('/health', (req, res) => {
 app.listen(config.port, () => {
   console.log(`Woot2RSS server running on port ${config.port}`);
   
-  // Initial feed update
+  // Initial feed update for all categories
+  console.log('Starting initial feed update for all categories...');
   rssGenerator.updateFeeds().catch(error => {
     console.error('Error in initial feed update:', error);
   });

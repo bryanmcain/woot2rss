@@ -4,10 +4,10 @@ const db = require('./db');
 
 class RssGenerator {
   constructor() {
-    this.createFeedTemplate = (category = null) => {
-      const title = category ? `Woot Deals - ${category}` : 'Woot Deals';
-      const description = category ? `Latest ${category} deals from Woot` : 'Latest deals from Woot';
-      const link = category ? `https://www.woot.com/category/${category.toLowerCase()}` : 'https://www.woot.com/';
+    this.createFeedTemplate = (category) => {
+      const title = `Woot Deals - ${category}`;
+      const description = `Latest ${category} deals from Woot`;
+      const link = `https://www.woot.com/category/${category.toLowerCase()}`;
       
       return new Feed({
         title: title,
@@ -30,7 +30,7 @@ class RssGenerator {
     this.lastUpdated = null;
     
     // Store the categories from the API
-    this.categories = ['All', ...wootApi.categories];
+    this.categories = [...wootApi.categories];
   }
 
   async fetchAndStoreOffers() {
@@ -248,9 +248,9 @@ class RssGenerator {
     `;
   }
   
-  async generateFeed(category = 'All') {
+  async generateFeed(category) {
     // Create a new feed from template
-    const feed = this.createFeedTemplate(category === 'All' ? null : category);
+    const feed = this.createFeedTemplate(category);
     
     // Get items from database for the specific category (most recent 50 by default)
     const items = db.getItems(category, 50);
@@ -281,7 +281,7 @@ class RssGenerator {
     return feedData;
   }
 
-  async getRssFeed(category = 'All') {
+  async getRssFeed(category) {
     // Check if we have a cached version for this category
     if (!this.cached.has(category)) {
       await this.generateFeed(category);
@@ -290,7 +290,7 @@ class RssGenerator {
     return this.cached.get(category).rss;
   }
 
-  async getAtomFeed(category = 'All') {
+  async getAtomFeed(category) {
     // Check if we have a cached version for this category
     if (!this.cached.has(category)) {
       await this.generateFeed(category);
@@ -299,7 +299,7 @@ class RssGenerator {
     return this.cached.get(category).atom;
   }
 
-  async getJsonFeed(category = 'All') {
+  async getJsonFeed(category) {
     // Check if we have a cached version for this category
     if (!this.cached.has(category)) {
       await this.generateFeed(category);
@@ -308,7 +308,7 @@ class RssGenerator {
     return this.cached.get(category).json;
   }
 
-  getLastUpdated(category = 'All') {
+  getLastUpdated(category) {
     // Get the feed update timestamp from the database for the specific category
     const lastUpdated = db.getFeedLastUpdated(category);
     
@@ -318,6 +318,14 @@ class RssGenerator {
   }
   
   getItemCount(category = null) {
+    // If no specific category requested, sum up items across all categories
+    if (category === null) {
+      let total = 0;
+      for (const cat of this.categories) {
+        total += db.getItemCount(cat);
+      }
+      return total;
+    }
     return db.getItemCount(category);
   }
   

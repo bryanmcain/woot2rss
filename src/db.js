@@ -31,7 +31,7 @@ class DbService {
     // Create tables
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS items (
-        id TEXT PRIMARY KEY,
+        id TEXT,
         title TEXT NOT NULL,
         url TEXT NOT NULL,
         description TEXT,
@@ -42,7 +42,8 @@ class DbService {
         discount TEXT,
         feed_type TEXT NOT NULL,
         created_at TEXT NOT NULL,
-        published_at TEXT NOT NULL
+        published_at TEXT NOT NULL,
+        PRIMARY KEY (id, feed_type)
       );
       
       CREATE TABLE IF NOT EXISTS feeds (

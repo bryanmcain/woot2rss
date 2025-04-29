@@ -30,7 +30,7 @@ class WootApi {
     ];
   }
 
-  async getListings(category = 'All') {
+  async getListings(category) {
     console.log(`Attempting to fetch listings from Woot API for category: ${category}...`);
     try {
       // Use the feed/{category} endpoint per the working curl command
@@ -55,7 +55,7 @@ class WootApi {
     }
   }
 
-  async getOffers(category = 'All') {
+  async getOffers(category) {
     console.log(`Fetching offers from Woot API for category: ${category}...`);
     try {
       // Use the listings feed to get current offers
@@ -79,9 +79,10 @@ class WootApi {
     console.log('Fetching offers for all categories...');
     const categoryOffers = {};
     
-    // Fetch offers for each category in parallel
-    await Promise.all(this.categories.map(async (category) => {
+    // Fetch offers for each category sequentially
+    for (const category of this.categories) {
       try {
+        console.log(`Fetching offers for category: ${category}...`);
         const offers = await this.getOffers(category);
         categoryOffers[category] = offers;
         console.log(`Fetched ${offers.length} offers for category ${category}`);
@@ -89,16 +90,6 @@ class WootApi {
         console.error(`Error fetching offers for category ${category}:`, error.message);
         categoryOffers[category] = [];
       }
-    }));
-    
-    // Also fetch the "All" feed for backward compatibility
-    try {
-      const allOffers = await this.getOffers();
-      categoryOffers['All'] = allOffers;
-      console.log(`Fetched ${allOffers.length} offers for All categories`);
-    } catch (error) {
-      console.error('Error fetching offers for All categories:', error.message);
-      categoryOffers['All'] = [];
     }
     
     return categoryOffers;
@@ -107,7 +98,7 @@ class WootApi {
   async getSpecificCategoryOffers(category) {
     console.log(`Fetching offers only for category ${category}...`);
     
-    if (category === 'All' || this.categories.includes(category)) {
+    if (this.categories.includes(category)) {
       try {
         const offers = await this.getOffers(category);
         console.log(`Fetched ${offers.length} offers for category ${category}`);
