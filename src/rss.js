@@ -7,7 +7,10 @@ class RssGenerator {
     this.createFeedTemplate = (category) => {
       const title = `Woot Deals - ${category}`;
       const description = `Latest ${category} deals from Woot`;
-      const link = `https://www.woot.com/category/${category.toLowerCase()}`;
+      const categorySlug = this.getCategorySlug(category);
+      
+      // Construct links using the slug format
+      const link = `https://www.woot.com/category/${categorySlug}`;
       
       return new Feed({
         title: title,
@@ -20,7 +23,7 @@ class RssGenerator {
         updated: new Date(),
         generator: 'Woot2RSS',
         feedLinks: {
-          rss: category ? `/rss/${category.toLowerCase()}` : '/rss',
+          rss: category ? `/rss/${categorySlug}` : '/rss',
         },
       });
     };
@@ -29,86 +32,67 @@ class RssGenerator {
     this.cached = new Map();
     this.lastUpdated = null;
     
-    // Store the categories from the API
-    this.categories = [...wootApi.categories];
+    // Get the initial categories from the API's known sites
+    // This will be updated dynamically as new sites are discovered from the API
+    this.categories = [...wootApi.knownSites];
+    
+    // Track all known categories (including those discovered at runtime)
+    this.allKnownCategories = new Set(this.categories);
   }
 
   async fetchAndStoreOffers() {
     try {
-      console.log('Fetching offers from Woot API for all categories...');
+      console.log('Fetching all offers from Woot API using single /All endpoint...');
       
-      // Fetch data from Woot API for all categories
-      const categoryOffers = await wootApi.getAllCategoryOffers();
+      // Fetch data from Woot API for all sites/categories at once from the /All endpoint
+      const categoryOffers = await wootApi.getAllOffers();
       let totalSavedCount = 0;
+      let newCategoriesFound = 0;
       
-      // Process each category
-      for (const [category, offers] of Object.entries(categoryOffers)) {
-        console.log(`Processing ${offers.length} offers from category ${category}...`);
+      // Process each category/site from the API response
+      for (const [site, offers] of Object.entries(categoryOffers)) {
+        console.log(`Processing ${offers.length} offers from site/category: ${site}...`);
+        
+        // Add this site to our known categories if it's new
+        if (!this.allKnownCategories.has(site)) {
+          this.allKnownCategories.add(site);
+          this.categories.push(site);
+          newCategoriesFound++;
+          console.log(`Found new site/category: ${site}`);
+        }
         
         let savedCount = 0;
         
         // Store offers in database
         for (const offer of offers) {
           try {
-            // Map the API response fields to our expected format
-            // Handle prices that can be objects with Minimum/Maximum values
-            const formatPrice = (price) => {
-              if (!price) return 'N/A';
-              if (typeof price === 'object' && price.Minimum !== undefined) {
-                return price.Minimum === price.Maximum ? 
-                  `$${price.Minimum}` : 
-                  `$${price.Minimum} - $${price.Maximum}`;
+            // Save item directly with its Site property
+            // Our new saveItem method handles creating new categories as needed
+            const success = db.saveItem(offer);
+            
+            if (success) {
+              savedCount++;
+              
+              // Log progress every 50 items
+              if (savedCount % 50 === 0) {
+                console.log(`Saved ${savedCount}/${offers.length} offers for site/category ${site}`);
               }
-              return `$${price}`;
-            };
-
-            const mappedOffer = {
-              id: offer.OfferId || `woot-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-              title: offer.Title || 'Untitled Offer',
-              description: offer.Subtitle || '',
-              url: offer.Url || 'https://www.woot.com',
-              published_at: offer.StartDate || new Date().toISOString(),
-              price: formatPrice(offer.SalePrice),
-              originalPrice: formatPrice(offer.ListPrice),
-              discount: null, // Calculate discount later if needed
-              imageUrl: offer.Photo || null,
-              categories: Array.isArray(offer.Categories) ? offer.Categories : [],
-              site: offer.Site || 'Woot',
-              isSoldOut: offer.IsSoldOut || false,
-              endDate: offer.EndDate || null
-            };
-            
-            // Add HTML content
-            const offerWithContent = {
-              ...mappedOffer,
-              content: this.generateItemContent(mappedOffer)
-            };
-            
-            // Add category check to ensure items are only saved to their correct category
-            const apiCategories = Array.isArray(offer.Categories) ? offer.Categories : [];
-            
-            // If this offer belongs to the current category, save it
-            if (apiCategories.includes(category) || category === 'Featured' || category === 'Clearance' || category === 'Wootoff') {
-              // Save item with the specific category as feed type
-              db.saveItem(offerWithContent, 'offers', category);
-            }
-            savedCount++;
-            
-            // Log progress every 100 items
-            if (savedCount % 100 === 0) {
-              console.log(`Saved ${savedCount}/${offers.length} offers for category ${category}`);
             }
           } catch (error) {
-            console.error(`Error processing offer for category ${category}:`, error);
+            console.error(`Error processing offer for site/category ${site}:`, error);
             // Continue with the next offer
           }
         }
         
         // Update feed timestamp for this category
-        db.updateFeedTimestamp(category);
+        db.updateFeedTimestamp(site);
         
-        console.log(`Successfully stored ${savedCount}/${offers.length} offers for category ${category}`);
+        console.log(`Successfully stored ${savedCount}/${offers.length} offers for site/category ${site}`);
         totalSavedCount += savedCount;
+      }
+      
+      if (newCategoriesFound > 0) {
+        console.log(`Found ${newCategoriesFound} new site categories from the API`);
       }
       
       console.log(`Total offers saved: ${totalSavedCount}`);
@@ -143,83 +127,65 @@ class RssGenerator {
   
   async updateSpecificFeed(category) {
     try {
+      // Standardize category name with first letter uppercase, rest lowercase
       const validCategory = category.charAt(0).toUpperCase() + category.slice(1).toLowerCase();
       
-      // Check if it's a valid category
-      if (!this.categories.includes(validCategory)) {
-        console.log(`Invalid category: ${category}`);
-        return { offersCount: 0, error: 'Invalid category' };
-      }
-      
+      // Even if it's not in our list of known categories yet, we'll try to fetch it
       console.log(`Updating feed for category: ${validCategory}...`);
       
-      // Fetch data for the specific category
-      const categoryOffers = await wootApi.getSpecificCategoryOffers(validCategory);
+      // Fetch all data and filter by the requested category/site
+      const allOffers = await wootApi.getAllOffers();
+      
+      // Check if the category exists in the fetched data
+      if (!allOffers[validCategory]) {
+        // If category doesn't exist and we don't know about it
+        if (!this.allKnownCategories.has(validCategory)) {
+          console.log(`Category ${validCategory} not found in available sites`);
+          return { offersCount: 0, error: 'Category not found in available sites' };
+        } else {
+          // We know about this category but no current offers
+          console.log(`No current offers for category ${validCategory}`);
+          
+          // Update the feed timestamp anyway
+          db.updateFeedTimestamp(validCategory);
+          
+          return { 
+            category: validCategory, 
+            offersCount: 0
+          };
+        }
+      }
+      
+      // If we reach here, we have offers for this category
+      const offers = allOffers[validCategory];
       let savedCount = 0;
       
-      // Process the offers
-      if (categoryOffers[validCategory] && categoryOffers[validCategory].length > 0) {
-        const offers = categoryOffers[validCategory];
-        console.log(`Processing ${offers.length} offers from category ${validCategory}...`);
-        
-        for (const offer of offers) {
-          try {
-            // Map the API response fields to our expected format
-            // Handle prices that can be objects with Minimum/Maximum values
-            const formatPrice = (price) => {
-              if (!price) return 'N/A';
-              if (typeof price === 'object' && price.Minimum !== undefined) {
-                return price.Minimum === price.Maximum ? 
-                  `$${price.Minimum}` : 
-                  `$${price.Minimum} - $${price.Maximum}`;
-              }
-              return `$${price}`;
-            };
-
-            const mappedOffer = {
-              id: offer.OfferId || `woot-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-              title: offer.Title || 'Untitled Offer',
-              description: offer.Subtitle || '',
-              url: offer.Url || 'https://www.woot.com',
-              published_at: offer.StartDate || new Date().toISOString(),
-              price: formatPrice(offer.SalePrice),
-              originalPrice: formatPrice(offer.ListPrice),
-              discount: null, // Calculate discount later if needed
-              imageUrl: offer.Photo || null,
-              categories: Array.isArray(offer.Categories) ? offer.Categories : [],
-              site: offer.Site || 'Woot',
-              isSoldOut: offer.IsSoldOut || false,
-              endDate: offer.EndDate || null
-            };
-            
-            // Add HTML content
-            const offerWithContent = {
-              ...mappedOffer,
-              content: this.generateItemContent(mappedOffer)
-            };
-            
-            // Add category check to ensure items are only saved to their correct category
-            const apiCategories = Array.isArray(offer.Categories) ? offer.Categories : [];
-            
-            // If this offer belongs to the current category, save it
-            if (apiCategories.includes(validCategory) || validCategory === 'Featured' || validCategory === 'Clearance' || validCategory === 'Wootoff') {
-              // Save item with the specific category as feed type
-              db.saveItem(offerWithContent, 'offers', validCategory);
-            }
-            savedCount++;
-          } catch (error) {
-            console.error(`Error processing offer for category ${validCategory}:`, error);
-            // Continue with the next offer
-          }
-        }
-        
-        // Update feed timestamp for this category
-        db.updateFeedTimestamp(validCategory);
-        
-        console.log(`Successfully stored ${savedCount}/${offers.length} offers for category ${validCategory}`);
-      } else {
-        console.log(`No offers found for category ${validCategory}`);
+      console.log(`Processing ${offers.length} offers for category ${validCategory}...`);
+      
+      // Add this category to our list if it's new
+      if (!this.allKnownCategories.has(validCategory)) {
+        this.allKnownCategories.add(validCategory);
+        this.categories.push(validCategory);
+        console.log(`Added new category: ${validCategory}`);
       }
+      
+      // Process each offer
+      for (const offer of offers) {
+        try {
+          // Save directly - our db.saveItem method now handles the Site field mapping
+          const success = db.saveItem(offer);
+          
+          if (success) {
+            savedCount++;
+          }
+        } catch (error) {
+          console.error(`Error processing offer for category ${validCategory}:`, error);
+          // Continue with the next offer
+        }
+      }
+      
+      // Update feed timestamp
+      db.updateFeedTimestamp(validCategory);
       
       // Clear cache for this category to force regeneration
       if (this.cached.has(validCategory)) {
@@ -343,7 +309,13 @@ class RssGenerator {
   
   // Get all available categories
   getCategories() {
-    return this.categories;
+    // Return the array of categories we know about, including any discovered at runtime
+    return [...this.allKnownCategories];
+  }
+  
+  // Helper method to convert category to URL-friendly slug
+  getCategorySlug(category) {
+    return category.toLowerCase().replace(/[^a-z0-9]/g, '_');
   }
 }
 

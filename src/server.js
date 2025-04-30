@@ -38,25 +38,29 @@ app.get('/', (req, res) => {
   const categories = rssGenerator.getCategories();
   const totalItemCount = rssGenerator.getItemCount();
   
-  // Create section for each category's stats
+  // Create section for each active category's stats
   let categoryStats = '';
   categories.forEach(category => {
     const catLastUpdated = rssGenerator.getLastUpdated(category);
     const catItemCount = rssGenerator.getItemCount(category);
     
-    categoryStats += `
-      <div class="category-stats">
-        <h3>${category}</h3>
-        <p>Last Updated: ${catLastUpdated ? catLastUpdated.toLocaleString() : 'Not yet updated'}</p>
-        <p>Items: ${catItemCount}</p>
-        <div class="category-feeds">
-          <a href="/rss/${category.toLowerCase()}" class="feed-link">RSS</a>
-          <a href="/atom/${category.toLowerCase()}" class="feed-link">Atom</a>
-          <a href="/json/${category.toLowerCase()}" class="feed-link">JSON</a>
-          <a href="/refresh/${category.toLowerCase()}" class="refresh-link">Refresh</a>
+    // Only show categories that have items
+    if (catItemCount > 0) {
+      const categorySlug = rssGenerator.getCategorySlug(category);
+      categoryStats += `
+        <div class="category-stats">
+          <h3>${category}</h3>
+          <p>Last Updated: ${catLastUpdated ? catLastUpdated.toLocaleString() : 'Not yet updated'}</p>
+          <p>Items: ${catItemCount}</p>
+          <div class="category-feeds">
+            <a href="/rss/${categorySlug}" class="feed-link">RSS</a>
+            <a href="/atom/${categorySlug}" class="feed-link">Atom</a>
+            <a href="/json/${categorySlug}" class="feed-link">JSON</a>
+            <a href="/refresh/${categorySlug}" class="refresh-link">Refresh</a>
+          </div>
         </div>
-      </div>
-    `;
+      `;
+    }
   });
   
   res.send(`
@@ -118,12 +122,17 @@ app.get('/json', (req, res) => {
 // Handle category-specific feeds
 app.get('/rss/:category', async (req, res) => {
   try {
-    const category = req.params.category.charAt(0).toUpperCase() + req.params.category.slice(1);
-    if (!rssGenerator.getCategories().map(c => c.toLowerCase()).includes(category.toLowerCase())) {
+    const categorySlug = req.params.category;
+    // Find matching category by comparing slugs
+    const matchingCategory = rssGenerator.getCategories().find(c => 
+      rssGenerator.getCategorySlug(c) === categorySlug
+    );
+    
+    if (!matchingCategory) {
       return res.status(404).send('Category not found');
     }
     
-    const feed = await rssGenerator.getRssFeed(category);
+    const feed = await rssGenerator.getRssFeed(matchingCategory);
     res.type('application/rss+xml');
     res.send(feed);
   } catch (error) {
@@ -134,12 +143,17 @@ app.get('/rss/:category', async (req, res) => {
 
 app.get('/atom/:category', async (req, res) => {
   try {
-    const category = req.params.category.charAt(0).toUpperCase() + req.params.category.slice(1);
-    if (!rssGenerator.getCategories().map(c => c.toLowerCase()).includes(category.toLowerCase())) {
+    const categorySlug = req.params.category;
+    // Find matching category by comparing slugs
+    const matchingCategory = rssGenerator.getCategories().find(c => 
+      rssGenerator.getCategorySlug(c) === categorySlug
+    );
+    
+    if (!matchingCategory) {
       return res.status(404).send('Category not found');
     }
     
-    const feed = await rssGenerator.getAtomFeed(category);
+    const feed = await rssGenerator.getAtomFeed(matchingCategory);
     res.type('application/atom+xml');
     res.send(feed);
   } catch (error) {
@@ -150,12 +164,17 @@ app.get('/atom/:category', async (req, res) => {
 
 app.get('/json/:category', async (req, res) => {
   try {
-    const category = req.params.category.charAt(0).toUpperCase() + req.params.category.slice(1);
-    if (!rssGenerator.getCategories().map(c => c.toLowerCase()).includes(category.toLowerCase())) {
+    const categorySlug = req.params.category;
+    // Find matching category by comparing slugs
+    const matchingCategory = rssGenerator.getCategories().find(c => 
+      rssGenerator.getCategorySlug(c) === categorySlug
+    );
+    
+    if (!matchingCategory) {
       return res.status(404).send('Category not found');
     }
     
-    const feed = await rssGenerator.getJsonFeed(category);
+    const feed = await rssGenerator.getJsonFeed(matchingCategory);
     res.type('application/json');
     res.send(feed);
   } catch (error) {
@@ -185,16 +204,29 @@ app.get('/refresh', async (req, res) => {
 // Add endpoint to refresh a specific category feed
 app.get('/refresh/:category', async (req, res) => {
   try {
-    const category = req.params.category;
-    console.log(`Manual refresh requested for category: ${category}`);
+    const categorySlug = req.params.category;
+    // Find matching category by comparing slugs
+    const matchingCategory = rssGenerator.getCategories().find(c => 
+      rssGenerator.getCategorySlug(c) === categorySlug
+    );
     
-    const result = await rssGenerator.updateSpecificFeed(category);
+    if (!matchingCategory) {
+      console.log(`Manual refresh requested for unknown category slug: ${categorySlug}`);
+      return res.status(404).json({
+        status: 'error',
+        message: 'Category not found',
+        category: categorySlug
+      });
+    }
+    
+    console.log(`Manual refresh requested for category: ${matchingCategory}`);
+    const result = await rssGenerator.updateSpecificFeed(matchingCategory);
     
     if (result.error) {
       return res.status(400).json({
         status: 'error',
         message: result.error,
-        category: category
+        category: matchingCategory
       });
     }
     

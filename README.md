@@ -4,7 +4,10 @@ A Docker service that converts Woot API data to RSS, Atom, and JSON feeds.
 
 ## Features
 
-- Automatically fetches product data from the Woot API
+- Automatically fetches product data from the Woot API using a single API call to the `/All` endpoint
+- Categorizes items by their `Site` property for efficient organization
+- Uses offer ID as the primary key for reliable data management
+- Dynamically discovers and adds new categories/sites as they become available
 - Stores feed items in a SQLite database for persistence
 - Regularly checks for new items from the API
 - Generates RSS, Atom, and JSON feeds from the database
@@ -37,6 +40,9 @@ UPDATE_INTERVAL=*/30 * * * *
 CHECK_NEW_ITEMS_INTERVAL=*/10 * * * *
 DB_PATH=/path/to/your/database.db
 MAX_ITEMS=1000
+ENABLE_LOGGING=false
+LOG_FILE=logs/woot2rss.log
+LOG_LEVEL=info
 ```
 
 Configuration options:
@@ -44,6 +50,9 @@ Configuration options:
 - `CHECK_NEW_ITEMS_INTERVAL`: Cron syntax to define how frequently to check for new items (default is every 10 minutes)
 - `DB_PATH`: Custom path to store the SQLite database (defaults to `./data/woot.db`)
 - `MAX_ITEMS`: Maximum number of items to store in the database (defaults to 1000)
+- `ENABLE_LOGGING`: Set to 'true' to enable detailed logging (defaults to false)
+- `LOG_FILE`: Path to the log file (defaults to 'logs/woot2rss.log')
+- `LOG_LEVEL`: Log level to use: 'debug', 'info', 'warn', or 'error' (defaults to 'info')
 
 ## Usage
 
@@ -64,8 +73,16 @@ docker-compose up -d
 
 ### Viewing Logs
 
+For container logs:
 ```bash
 docker-compose logs -f
+```
+
+For application logs (when ENABLE_LOGGING=true):
+```bash
+cat logs/woot2rss.log
+# or to follow the log
+tail -f logs/woot2rss.log
 ```
 
 ## Development
@@ -92,5 +109,9 @@ See the [LICENSE](LICENSE) file for details.
 
 ## Notes
 
-- The specific Woot API endpoints used in this application may need to be adjusted based on the actual API documentation.
-- You will need to register for an API key at the Woot developer portal.
+- This application uses the `/feed/All` endpoint from the Woot API to fetch all offers in a single call
+- Items are categorized by their `Site` property (e.g., "Clearance", "Electronics", "Shirts")
+- Each category automatically gets its own table in the database
+- The application automatically discovers and handles new site categories as they appear
+- You will need to register for an API key at the Woot developer portal
+- The OfferId field is used as the primary key for all database tables

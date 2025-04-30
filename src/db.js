@@ -18,10 +18,10 @@ class DbService {
     this.db = new Database(dbPath);
     console.log(`Database initialized at: ${dbPath}`);
     
-    // Define the categories
+    // Define the active categories (ones that actually have data)
     this.categories = [
-      'Clearance', 'Computers', 'Electronics', 'Featured', 
-      'Home', 'Gourmet', 'Shirts', 'Sports', 'Tools', 'Wootoff'
+      'Clearance', 'Computers', 'Electronics', 'Home & Kitchen',
+      'Grocery & Household', 'Sports & Outdoors', 'Tools & Garden', 'Shirt'
     ];
     
     this.init();
@@ -29,7 +29,32 @@ class DbService {
   
   _getCategoryTableName(category) {
     // Standardize table name format
-    return `items_${category.toLowerCase()}`;
+    // Replace spaces or special characters with underscores
+    return `items_${category.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+  }
+  
+  _createCategoryTable(category) {
+    const tableName = this._getCategoryTableName(category);
+    
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS ${tableName} (
+        offer_id TEXT PRIMARY KEY,
+        id TEXT,
+        title TEXT NOT NULL,
+        url TEXT NOT NULL,
+        description TEXT,
+        content TEXT,
+        image_url TEXT,
+        price TEXT,
+        original_price TEXT,
+        discount TEXT,
+        site TEXT,
+        created_at TEXT NOT NULL,
+        published_at TEXT NOT NULL
+      );
+    `);
+    
+    console.log(`Ensured table exists: ${tableName}`);
   }
   
   init() {
@@ -48,25 +73,9 @@ class DbService {
       WHERE type='table' AND name='items'
     `).get();
     
-    // Create separate tables for each category
+    // Create separate tables for each category (and handle any new categories dynamically)
     for (const category of this.categories) {
-      const tableName = this._getCategoryTableName(category);
-      
-      this.db.exec(`
-        CREATE TABLE IF NOT EXISTS ${tableName} (
-          id TEXT PRIMARY KEY,
-          title TEXT NOT NULL,
-          url TEXT NOT NULL,
-          description TEXT,
-          content TEXT,
-          image_url TEXT,
-          price TEXT,
-          original_price TEXT,
-          discount TEXT,
-          created_at TEXT NOT NULL,
-          published_at TEXT NOT NULL
-        );
-      `);
+      this._createCategoryTable(category);
     }
     
     console.log("Database tables initialized");
@@ -114,10 +123,11 @@ class DbService {
           // Insert into new table
           this.db.prepare(`
             INSERT OR REPLACE INTO ${tableName} (
-              id, title, url, description, content, image_url, 
-              price, original_price, discount, created_at, published_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              offer_id, id, title, url, description, content, image_url, 
+              price, original_price, discount, site, created_at, published_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).run(
+            item.id || `woot-legacy-${Date.now()}`,  // offer_id (primary key)
             item.id,
             item.title,
             item.url,
@@ -127,6 +137,7 @@ class DbService {
             item.price,
             item.original_price,
             item.discount,
+            category,                                // site
             item.created_at,
             item.published_at
           );
@@ -149,62 +160,133 @@ class DbService {
     }
   }
   
-  saveItem(item, feedType, category = null) {
+  // Check if a category exists in our known categories and add it if not
+  _ensureCategory(category) {
+    if (!category) return false;
+    
+    // If the category is not in our list, add it and create its table
+    if (!this.categories.includes(category)) {
+      console.log(`Adding new category to the system: ${category}`);
+      this.categories.push(category);
+      this._createCategoryTable(category);
+      return true;
+    }
+    
+    return false;
+  }
+  
+  saveItem(item, feedType = null, category = null) {
     try {
-      // Use category if provided, otherwise use feedType
-      const actualCategory = category || feedType;
+      // Get the site from the item or fall back to provided feedType/category
+      const site = item.Site || category || feedType;
       
-      // Skip if category is not recognized
-      if (!this.categories.includes(actualCategory)) {
-        console.error(`Cannot save item - unknown category: ${actualCategory}`);
+      if (!site) {
+        console.error(`Cannot save item - no site/category information available`);
+        console.error('Item:', JSON.stringify(item).substring(0, 200) + '...');
         return;
       }
       
-      const tableName = this._getCategoryTableName(actualCategory);
+      // Ensure this category exists in our system
+      this._ensureCategory(site);
+      
+      // Standardize the table name format
+      const tableName = this._getCategoryTableName(site);
+      
+      // Prepare price information
+      let price = '';
+      let originalPrice = '';
+      let discount = '';
+      
+      // Extract price info from the Woot API format
+      if (item.SalePrice && item.SalePrice.Minimum) {
+        price = `$${item.SalePrice.Minimum}`;
+        
+        if (item.ListPrice && item.ListPrice.Minimum) {
+          originalPrice = `$${item.ListPrice.Minimum}`;
+          
+          // Calculate discount percentage if both prices are available
+          const salePrice = parseFloat(item.SalePrice.Minimum);
+          const listPrice = parseFloat(item.ListPrice.Minimum);
+          
+          if (!isNaN(salePrice) && !isNaN(listPrice) && listPrice > 0) {
+            const discountPct = Math.round((1 - (salePrice / listPrice)) * 100);
+            discount = `${discountPct}%`;
+          }
+        }
+      }
+      
+      // Prepare date information
+      const now = new Date().toISOString();
+      const startDate = item.StartDate ? new Date(item.StartDate).toISOString() : null;
+      const publishedAt = startDate || now;
+      
+      // Create description from available fields
+      const description = item.Subtitle || '';
+      
+      // Create content with additional details
+      let content = '';
+      if (item.Categories && item.Categories.length > 0) {
+        content += `Categories: ${item.Categories.join(', ')}\n`;
+      }
+      if (originalPrice) {
+        content += `Original Price: ${originalPrice}\n`;
+      }
+      if (price) {
+        content += `Sale Price: ${price}\n`;
+      }
+      if (discount) {
+        content += `Discount: ${discount}\n`;
+      }
+      if (startDate) {
+        content += `Started: ${startDate}\n`;
+      }
+      if (item.EndDate) {
+        content += `Ends: ${item.EndDate}\n`;
+      }
       
       const stmt = this.db.prepare(`
         INSERT OR REPLACE INTO ${tableName} (
-          id, title, url, description, content, image_url, 
-          price, original_price, discount, created_at, published_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          offer_id, id, title, url, description, content, image_url, 
+          price, original_price, discount, site, created_at, published_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
-      
-      const now = new Date().toISOString();
-      const publishedAt = item.published_at || item.startDate || item.createdAt || now;
       
       // Log to debug
       console.log('Debug - Saving item to table', tableName, {
+        offer_id: item.OfferId || `woot-${Date.now()}`,
         id: item.id || item.url || `woot-${Date.now()}`,
-        title: item.title || 'Untitled',
-        url: item.url || 'https://www.woot.com',
-        description: item.description || '',
-        contentLength: item.content ? item.content.length : 0,
-        imageUrl: item.imageUrl || '',
-        price: item.price || '',
-        originalPrice: item.originalPrice || '',
-        discount: item.discount || ''
+        title: item.Title || 'Untitled',
+        url: item.Url || 'https://www.woot.com',
+        site: site,
+        price: price,
+        originalPrice: originalPrice,
+        discount: discount
       });
       
       stmt.run(
-        item.id || item.url || `woot-${Date.now()}`,
-        item.title || 'Untitled',
-        item.url || 'https://www.woot.com',
-        item.description || '',
-        item.content || '',
-        item.imageUrl || '',
-        item.price || '',
-        item.originalPrice || '',
-        item.discount || '',
-        now,
-        publishedAt
+        item.OfferId || `woot-${Date.now()}`,               // offer_id (primary key)
+        item.id || item.url || `woot-${Date.now()}`,        // id (legacy support)
+        item.Title || 'Untitled',                           // title
+        item.Url || 'https://www.woot.com',                 // url
+        description,                                         // description
+        content,                                             // content
+        item.Photo || '',                                    // image_url
+        price,                                               // price
+        originalPrice,                                       // original_price
+        discount,                                            // discount
+        site,                                                // site
+        now,                                                 // created_at
+        publishedAt                                          // published_at
       );
+      
+      return true;
     } catch (error) {
       console.error('Error saving item to database:', error);
       console.error('Item data:', JSON.stringify({
-        id: item.id,
-        title: item.title,
-        url: item.url,
-        published_at: item.published_at
+        OfferId: item.OfferId,
+        Title: item.Title,
+        Url: item.Url,
+        Site: item.Site
       }));
       throw error;
     }
@@ -264,6 +346,7 @@ class DbService {
       return [];
     }
     
+    // Standardize the table name format
     const tableName = this._getCategoryTableName(feedType);
     
     try {
@@ -281,6 +364,7 @@ class DbService {
   }
   
   _getCountForCategory(category) {
+    // Standardize the table name format
     const tableName = this._getCategoryTableName(category);
     
     try {

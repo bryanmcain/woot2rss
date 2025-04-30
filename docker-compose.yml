@@ -16,10 +16,16 @@ services:
       - CHECK_NEW_ITEMS_INTERVAL=${CHECK_NEW_ITEMS_INTERVAL:-*/10 * * * *}
       - DB_PATH=/app/data/woot.db
       - MAX_ITEMS=${MAX_ITEMS:-1000}
+      - ENABLE_LOGGING=${ENABLE_LOGGING:-false}
+      - LOG_FILE=/app/logs/woot2rss.log
+      - LOG_LEVEL=${LOG_LEVEL:-info}
     volumes:
       - woot-data:/app/data
+      - woot-logs:/app/logs
     restart: unless-stopped
 
 volumes:
   woot-data:
+    driver: local
+  woot-logs:
     driver: local
