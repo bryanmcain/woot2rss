@@ -34,12 +34,12 @@ cp .env.example .env
 
 ```
 WOOT_API_KEY=your_api_key_here
-WOOT_API_BASE_URL=https://api.woot.com
+WOOT_API_BASE_URL=https://developer.woot.com
 PORT=3000
 UPDATE_INTERVAL=*/30 * * * *
 CHECK_NEW_ITEMS_INTERVAL=*/10 * * * *
 DB_PATH=/path/to/your/database.db
-MAX_ITEMS=1000
+MAX_ITEMS=100000
 ENABLE_LOGGING=false
 LOG_FILE=logs/woot2rss.log
 LOG_LEVEL=info
@@ -49,7 +49,7 @@ Configuration options:
 - `UPDATE_INTERVAL`: Cron syntax to define how frequently full feed updates and maintenance should run (default is every 30 minutes)
 - `CHECK_NEW_ITEMS_INTERVAL`: Cron syntax to define how frequently to check for new items (default is every 10 minutes)
 - `DB_PATH`: Custom path to store the SQLite database (defaults to `./data/woot.db`)
-- `MAX_ITEMS`: Maximum number of items to store in the database (defaults to 1000)
+- `MAX_ITEMS`: Maximum number of items to store in the database (defaults to 100000)
 - `ENABLE_LOGGING`: Set to 'true' to enable detailed logging (defaults to false)
 - `LOG_FILE`: Path to the log file (defaults to 'logs/woot2rss.log')
 - `LOG_LEVEL`: Log level to use: 'debug', 'info', 'warn', or 'error' (defaults to 'info')
@@ -61,6 +61,8 @@ Configuration options:
 ```bash
 docker-compose up -d
 ```
+
+This will create a Docker container named 'woot2rss'.
 
 ### Accessing the Feeds
 
@@ -76,6 +78,8 @@ docker-compose up -d
 For container logs:
 ```bash
 docker-compose logs -f
+# or specifically for the woot2rss container
+docker logs -f woot2rss
 ```
 
 For application logs (when ENABLE_LOGGING=true):
@@ -113,5 +117,6 @@ See the [LICENSE](LICENSE) file for details.
 - Items are categorized by their `Site` property (e.g., "Clearance", "Electronics", "Shirts")
 - Each category automatically gets its own table in the database
 - The application automatically discovers and handles new site categories as they appear
-- You will need to register for an API key at the Woot developer portal
+- You will need to register for an API key at the Woot developer portal (https://developer.woot.com)
 - The OfferId field is used as the primary key for all database tables
+- Database data persists between container restarts via Docker named volumes
