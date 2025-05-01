@@ -2,6 +2,7 @@ version: '3'
 
 services:
   woot2rss:
+    container_name: woot2rss
     build:
       context: .
       dockerfile: Dockerfile
