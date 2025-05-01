@@ -6,19 +6,13 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"
+      - "${PORT:-3000}:3000"
+    env_file:
+      - .env
     environment:
       - NODE_ENV=production
-      - WOOT_API_KEY=${WOOT_API_KEY}
-      - WOOT_API_BASE_URL=${WOOT_API_BASE_URL:-https://api.woot.com}
-      - PORT=3000
-      - UPDATE_INTERVAL=${UPDATE_INTERVAL:-*/30 * * * *}
-      - CHECK_NEW_ITEMS_INTERVAL=${CHECK_NEW_ITEMS_INTERVAL:-*/10 * * * *}
       - DB_PATH=/app/data/woot.db
-      - MAX_ITEMS=${MAX_ITEMS:-1000}
-      - ENABLE_LOGGING=${ENABLE_LOGGING:-false}
       - LOG_FILE=/app/logs/woot2rss.log
-      - LOG_LEVEL=${LOG_LEVEL:-info}
     volumes:
       - woot-data:/app/data
       - woot-logs:/app/logs
