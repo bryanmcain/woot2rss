@@ -264,7 +264,7 @@ class DbService {
       // Log to debug
       console.log('Debug - Saving item to table', tableName, {
         offer_id: offer_id,
-        id: item.id || item.Url || offer_id,
+        id: item.Url || item.id || offer_id,                 // Use URL as the ID field
         title: item.Title || 'Untitled',
         url: item.Url || 'https://www.woot.com',
         site: site,
@@ -274,8 +274,8 @@ class DbService {
       });
       
       stmt.run(
-        offer_id,                                            // offer_id (primary key)
-        item.id || item.Url || offer_id,                     // id (legacy support)
+        offer_id,                                            // offer_id (primary key - keep this as OfferId)
+        item.Url || item.id || offer_id,                     // Use URL as the ID field
         item.Title || 'Untitled',                            // title
         item.Url || 'https://www.woot.com',                  // url
         description,                                          // description
