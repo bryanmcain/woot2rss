@@ -251,10 +251,20 @@ class DbService {
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       
+      // Generate a stable offer_id when none is provided by creating a hash of the URL and title
+      let offer_id = item.OfferId;
+      if (!offer_id && item.Url && item.Title) {
+        // Create a stable ID by combining the URL and title
+        offer_id = `woot-${item.Url}-${item.Title}`.replace(/[^a-zA-Z0-9]/g, '_');
+      } else if (!offer_id) {
+        // Fallback if we don't have URL or title
+        offer_id = `woot-${Date.now()}`;
+      }
+      
       // Log to debug
       console.log('Debug - Saving item to table', tableName, {
-        offer_id: item.OfferId || `woot-${Date.now()}`,
-        id: item.id || item.url || `woot-${Date.now()}`,
+        offer_id: offer_id,
+        id: item.id || item.Url || offer_id,
         title: item.Title || 'Untitled',
         url: item.Url || 'https://www.woot.com',
         site: site,
@@ -264,19 +274,19 @@ class DbService {
       });
       
       stmt.run(
-        item.OfferId || `woot-${Date.now()}`,               // offer_id (primary key)
-        item.id || item.url || `woot-${Date.now()}`,        // id (legacy support)
-        item.Title || 'Untitled',                           // title
-        item.Url || 'https://www.woot.com',                 // url
-        description,                                         // description
-        content,                                             // content
-        item.Photo || '',                                    // image_url
-        price,                                               // price
-        originalPrice,                                       // original_price
-        discount,                                            // discount
-        site,                                                // site
-        now,                                                 // created_at
-        publishedAt                                          // published_at
+        offer_id,                                            // offer_id (primary key)
+        item.id || item.Url || offer_id,                     // id (legacy support)
+        item.Title || 'Untitled',                            // title
+        item.Url || 'https://www.woot.com',                  // url
+        description,                                          // description
+        content,                                              // content
+        item.Photo || '',                                     // image_url
+        price,                                                // price
+        originalPrice,                                        // original_price
+        discount,                                             // discount
+        site,                                                 // site
+        now,                                                  // created_at
+        publishedAt                                           // published_at
       );
       
       return true;
