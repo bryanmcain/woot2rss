@@ -239,6 +239,7 @@ class RssGenerator {
       feed.addItem({
         title: item.title,
         id: item.url, // Use the item's URL as the guid
+        guid: item.url,
         link: item.url,
         description: item.description,
         content: item.content,
@@ -253,7 +254,7 @@ class RssGenerator {
     const jsonOutput = feed.json1();
     
     // Add isPermaLink="true" to all guid elements in the RSS output
-    rssOutput = rssOutput.replace(/<guid>/g, '<guid isPermaLink="true">');
+    //rssOutput = rssOutput.replace(/<guid>/g, '<guid isPermaLink="true">');
     
     // Create feed data with modified RSS output
     const feedData = {
