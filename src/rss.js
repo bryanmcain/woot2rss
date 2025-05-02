@@ -238,7 +238,7 @@ class RssGenerator {
       // Add the item to the feed with URL as ID
       feed.addItem({
         title: item.title,
-        id: item.id, // The id field now contains the URL from our database changes
+        id: item.url, // Use the item's URL as the guid
         link: item.url,
         description: item.description,
         content: item.content,
