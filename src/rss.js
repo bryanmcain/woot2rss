@@ -230,7 +230,7 @@ class RssGenerator {
     // Create a new feed from template
     const feed = this.createFeedTemplate(category);
     
-    // Get items from database for the specific category (most recent 50 by default)
+    // Get useritems from database for the specific category (most recent 50 by default)
     const items = db.getItems(category, 50);
     
     // Add items to the feed
