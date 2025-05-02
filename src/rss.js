@@ -235,9 +235,10 @@ class RssGenerator {
     
     // Add items to the feed
     for (const item of items) {
+      // Add the item to the feed with URL as ID
       feed.addItem({
         title: item.title,
-        id: item.offer_id, // Use offer_id as the unique identifier instead of id
+        id: item.url, // Use the item's URL as the guid
         link: item.url,
         description: item.description,
         content: item.content,
@@ -247,10 +248,18 @@ class RssGenerator {
     }
     
     // Generate feed formats
+    let rssOutput = feed.rss2();
+    const atomOutput = feed.atom1();
+    const jsonOutput = feed.json1();
+    
+    // Add isPermaLink="true" to all guid elements in the RSS output
+    rssOutput = rssOutput.replace(/<guid>/g, '<guid isPermaLink="true">');
+    
+    // Create feed data with modified RSS output
     const feedData = {
-      rss: feed.rss2(),
-      atom: feed.atom1(),
-      json: feed.json1(),
+      rss: rssOutput,
+      atom: atomOutput,
+      json: jsonOutput,
     };
     
     // Cache the results
