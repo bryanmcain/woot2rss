@@ -237,7 +237,7 @@ class RssGenerator {
     for (const item of items) {
       feed.addItem({
         title: item.title,
-        id: item.id,
+        id: item.offer_id, // Use offer_id as the unique identifier instead of id
         link: item.url,
         description: item.description,
         content: item.content,
