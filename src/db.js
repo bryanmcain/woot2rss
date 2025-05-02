@@ -262,16 +262,16 @@ class DbService {
       }
       
       // Log to debug
-      console.log('Debug - Saving item to table', tableName, {
-        offer_id: offer_id,
-        id: item.Url || item.id || offer_id,                 // Use URL as the ID field
-        title: item.Title || 'Untitled',
-        url: item.Url || 'https://www.woot.com',
-        site: site,
-        price: price,
-        originalPrice: originalPrice,
-        discount: discount
-      });
+     // console.log('Debug - Saving item to table', tableName, {
+     //   offer_id: offer_id,
+     //   id: item.Url || item.id || offer_id,                 // Use URL as the ID field
+     //   title: item.Title || 'Untitled',
+     //   url: item.Url || 'https://www.woot.com',
+     //   site: site,
+     //   price: price,
+     //   originalPrice: originalPrice,
+     //   discount: discount
+     // });
       
       stmt.run(
         offer_id,                                            // offer_id (primary key - keep this as OfferId)
