@@ -251,20 +251,29 @@ class DbService {
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       
-      // Generate a stable offer_id when none is provided by creating a hash of the URL and title
-      let offer_id = item.OfferId;
-      if (!offer_id && item.Url && item.Title) {
-        // Create a stable ID by combining the URL and title
-        offer_id = `woot-${item.Url}-${item.Title}`.replace(/[^a-zA-Z0-9]/g, '_');
-      } else if (!offer_id) {
-        // Fallback if we don't have URL or title
-        offer_id = `woot-${Date.now()}`;
+      // Use the URL as the primary key (offer_id) when available
+      // Generate a stable offer_id as backup when URL is not available
+      let offer_id = item.Url;
+      
+      // If URL is not available, try to use OfferId or generate a stable ID
+      if (!offer_id) {
+        offer_id = item.OfferId;
+        if (!offer_id && item.Title) {
+          // Create a stable ID using title
+          offer_id = `woot-${item.Title}`.replace(/[^a-zA-Z0-9]/g, '_');
+        } else if (!offer_id) {
+          // Last resort fallback
+          offer_id = `woot-${Date.now()}`;
+        }
       }
+      
+      // Also set the id field to the URL to make it available for RSS generation
+      const id_field = item.Url || item.id || offer_id;
       
       // Log to debug
       console.log('Debug - Saving item to table', tableName, {
         offer_id: offer_id,
-        id: item.id || item.Url || offer_id,
+        id: id_field,
         title: item.Title || 'Untitled',
         url: item.Url || 'https://www.woot.com',
         site: site,
@@ -275,7 +284,7 @@ class DbService {
       
       stmt.run(
         offer_id,                                            // offer_id (primary key)
-        item.id || item.Url || offer_id,                     // id (legacy support)
+        id_field,                                            // id field set to URL when available
         item.Title || 'Untitled',                            // title
         item.Url || 'https://www.woot.com',                  // url
         description,                                          // description
